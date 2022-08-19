@@ -1,6 +1,5 @@
-package com.acme;
+package com.acme.resume.refresh;
 
-import com.acme.resume.refresh.ResumeRefresher;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;

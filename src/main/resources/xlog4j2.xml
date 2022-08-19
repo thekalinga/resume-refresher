@@ -25,7 +25,7 @@
     </Appenders>
     <Loggers>
         <!-- Debug can be enabled for our package by setting -Ddebug flag (or) DEBUG env variable (or) --debug commandline flag -->
-        <!-- See com.acme.LoggingDebugEnvironmentPostProcessor on how its implemented -->
+        <!-- See com.acme.resume.refresh.LoggingDebugEnvironmentPostProcessor on how its implemented -->
         <AsyncLogger name="com.acme" level="info" additivity="false">
             <AppenderRef ref="Console" />
 <!--            <AppenderRef ref="Console" level="info" />-->
