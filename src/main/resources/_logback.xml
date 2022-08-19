@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true">
+    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <root level="info">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+    <logger name="com.acme" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+</configuration>

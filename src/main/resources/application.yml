@@ -1,0 +1,13 @@
+app:
+  resume:
+    path: '/path/to/resume.pdf'
+    filename: 'name-of-file.pdf'
+  naukri:
+    username: 'naukri username/email'
+    password: 'password'
+  monster:
+    username: 'monster username/email'
+    password: 'password'
+  instahyre:
+    username: 'instahyre username/email'
+    password: 'password'
