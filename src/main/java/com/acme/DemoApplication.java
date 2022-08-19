@@ -25,7 +25,7 @@ public class DemoApplication {
   ApplicationRunner onInit(List<ResumeRefresher> refreshers) {
     return args -> {
       Flux.fromIterable(refreshers)
-        .concatMap(ResumeRefresher::refresh)
+        .concatMapDelayError(ResumeRefresher::refresh) //lets allow refresh of resume to proceed even if we fail to refresh in one of the resume service provider
         .blockLast();
     };
   }
