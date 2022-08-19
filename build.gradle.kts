@@ -7,7 +7,7 @@ plugins {
     id("org.springframework.experimental.aot") version "0.12.1"
 }
 
-group = "com.example"
+group = "com.acme"
 version = "0.0.1-SNAPSHOT"
 java.sourceCompatibility = JavaVersion.VERSION_17
 

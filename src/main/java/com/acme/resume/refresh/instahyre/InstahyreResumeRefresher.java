@@ -18,6 +18,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Paths;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static io.netty.handler.codec.http.cookie.ClientCookieEncoder.STRICT;
@@ -51,12 +52,12 @@ public class InstahyreResumeRefresher implements ResumeRefresher {
   private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public InstahyreResumeRefresher(InstahyreProperties instahyreProperties, ResumeProperties resumeProperties, ClientHttpConnector clientHttpConnector) {
+  public InstahyreResumeRefresher(InstahyreProperties instahyreProperties, ResumeProperties resumeProperties, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
     this.instahyreProperties = instahyreProperties;
     this.resumeProperties = resumeProperties;
     this.webClient =
         WebClient.builder().baseUrl("https://www.instahyre.com/")
-            .clientConnector(clientHttpConnector)
+            .clientConnector(loggerNameToClientHttpConnectorMapper.apply(getClass().getCanonicalName()))
             .defaultHeaders(httpHeaders -> {
               httpHeaders.add(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36");
               httpHeaders.add(REFERER, "https://www.instahyre.com/");

@@ -22,6 +22,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
@@ -45,12 +46,12 @@ public class NaukriResumeRefresher implements ResumeRefresher {
   private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public NaukriResumeRefresher(NaukriProperties naukriProperties, ResumeProperties resumeProperties, ClientHttpConnector clientHttpConnector) {
+  public NaukriResumeRefresher(NaukriProperties naukriProperties, ResumeProperties resumeProperties, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
     this.naukriProperties = naukriProperties;
     this.resumeProperties = resumeProperties;
     this.webClient =
         WebClient.builder().baseUrl("https://www.naukri.com")
-            .clientConnector(clientHttpConnector)
+            .clientConnector(loggerNameToClientHttpConnectorMapper.apply(getClass().getCanonicalName()))
             .defaultHeaders(httpHeaders -> {
               httpHeaders.add(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36");
             })

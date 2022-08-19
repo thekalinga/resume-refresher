@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static java.util.Objects.requireNonNull;
@@ -49,12 +50,12 @@ public class MonsterResumeRefresher implements ResumeRefresher {
 
   @SuppressWarnings("unused") // since we are dealing with a component
   public MonsterResumeRefresher(MonsterProperties monsterProperties, ResumeProperties resumeProperties,
-      ClientHttpConnector clientHttpConnector) {
+      ClientHttpConnector clientHttpConnector, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
     this.monsterProperties = monsterProperties;
     this.resumeProperties = resumeProperties;
     this.webClient =
         WebClient.builder().baseUrl("https://www.monsterindia.com")
-            .clientConnector(clientHttpConnector)
+            .clientConnector(loggerNameToClientHttpConnectorMapper.apply(getClass().getCanonicalName()))
             .defaultHeaders(httpHeaders -> {
               httpHeaders.add(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36");
               httpHeaders.add(REFERER, "https://www.monsterindia.com/");
