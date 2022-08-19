@@ -1,4 +1,4 @@
-package com.acme;
+package com.acme.resume.refresh;
 
 import com.acme.resume.refresh.instahyre.exchange.CandidateResponse;
 import com.acme.resume.refresh.instahyre.exchange.ResumeResponse;

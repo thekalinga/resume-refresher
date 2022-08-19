@@ -12,18 +12,15 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.http.client.reactive.ClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
-import reactor.netty.http.client.HttpClient;
 
 import java.nio.file.Paths;
 import java.util.regex.Pattern;
 
 import static io.netty.handler.codec.http.cookie.ClientCookieEncoder.STRICT;
-import static io.netty.handler.logging.LogLevel.DEBUG;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardOpenOption.READ;
 import static java.util.Objects.requireNonNull;
 import static org.springframework.core.io.buffer.DataBufferUtils.join;
@@ -37,7 +34,6 @@ import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.http.HttpMethod.PUT;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.util.Base64Utils.encodeToString;
-import static reactor.netty.transport.logging.AdvancedByteBufFormat.TEXTUAL;
 
 @Log4j2
 @Component
@@ -46,27 +42,19 @@ import static reactor.netty.transport.logging.AdvancedByteBufFormat.TEXTUAL;
 @SuppressWarnings("unused") // since we are dealing with a component
 public class InstahyreResumeRefresher implements ResumeRefresher {
 
-  private final String CSRF_COOKIE_NAME = "csrftoken";
-  private final String CSRF_HEADER_NAME = "x-csrftoken";
-  private final String SESSION_ID_COOKIE_NAME = "sessionid";
+  private static final String CSRF_COOKIE_NAME = "csrftoken";
+  private static final String CSRF_HEADER_NAME = "x-csrftoken";
+  private static final String SESSION_ID_COOKIE_NAME = "sessionid";
 
   private final InstahyreProperties instahyreProperties;
   private final ResumeProperties resumeProperties;
+  private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public InstahyreResumeRefresher(InstahyreProperties instahyreProperties, ResumeProperties resumeProperties) {
+  public InstahyreResumeRefresher(InstahyreProperties instahyreProperties, ResumeProperties resumeProperties, ClientHttpConnector clientHttpConnector) {
     this.instahyreProperties = instahyreProperties;
     this.resumeProperties = resumeProperties;
-  }
-
-  @Override
-  public Mono<Void> refresh() {
-    HttpClient reactorHttpClient = HttpClient.create()
-        .wiretap(getClass().getCanonicalName(), DEBUG, TEXTUAL, UTF_8); // capture messages over wire
-
-    ReactorClientHttpConnector clientHttpConnector = new ReactorClientHttpConnector(reactorHttpClient);
-
-    final var webClient =
+    this.webClient =
         WebClient.builder().baseUrl("https://www.instahyre.com/")
             .clientConnector(clientHttpConnector)
             .defaultHeaders(httpHeaders -> {
@@ -74,7 +62,10 @@ public class InstahyreResumeRefresher implements ResumeRefresher {
               httpHeaders.add(REFERER, "https://www.instahyre.com/");
             })
             .build();
+  }
 
+  @Override
+  public Mono<Void> refresh() {
     /*
     curl 'https://www.instahyre.com/api/v1/user_login' \
       -H 'content-type: application/json' \
@@ -99,7 +90,7 @@ public class InstahyreResumeRefresher implements ResumeRefresher {
 
     /*
     curl 'https://www.instahyre.com/candidate/profile/' \
-      -H 'cookie: sessionid=kvas9kb7y9522y27edzwp3k6901zo5ne' \
+      -H 'cookie: sessionid=<>' \
       -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36'
 
     get `candidateId = '<\d+>',` from response html
@@ -129,7 +120,7 @@ public class InstahyreResumeRefresher implements ResumeRefresher {
 
     /*
     curl -v 'https://www.instahyre.com/api/v1/candidate/<candidateId>' \
-      -H 'cookie: sessionid=kvas9kb7y9522y27edzwp3k6901zo5ne' \
+      -H 'cookie: sessionid=<>' \
       -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36'
 
     get resume.id from json response. its `id` property of response json

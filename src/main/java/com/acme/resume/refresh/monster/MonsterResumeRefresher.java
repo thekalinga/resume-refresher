@@ -14,16 +14,13 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.client.MultipartBodyBuilder;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.http.client.reactive.ClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
-import reactor.netty.http.client.HttpClient;
 
 import java.util.regex.Pattern;
 
-import static io.netty.handler.logging.LogLevel.DEBUG;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static org.springframework.http.HttpHeaders.LOCATION;
 import static org.springframework.http.HttpHeaders.REFERER;
@@ -36,7 +33,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.http.MediaType.APPLICATION_PDF;
 import static org.springframework.http.MediaType.MULTIPART_FORM_DATA;
 import static org.springframework.web.reactive.function.BodyInserters.fromFormData;
-import static reactor.netty.transport.logging.AdvancedByteBufFormat.TEXTUAL;
 
 @Log4j2
 @Component
@@ -44,26 +40,19 @@ import static reactor.netty.transport.logging.AdvancedByteBufFormat.TEXTUAL;
 @Order(999) // uploading of resume fails most of the time. Let do this at end
 @SuppressWarnings("unused") // since we are dealing with a component
 public class MonsterResumeRefresher implements ResumeRefresher {
-  private final String INITIAL_COOKIE_NAME = "MRE";
-  private final String MAIN_COOKIE_NAME = "MSSOAT";
+  private static final String INITIAL_COOKIE_NAME = "MRE";
+  private static final String MAIN_COOKIE_NAME = "MSSOAT";
 
   private final MonsterProperties monsterProperties;
   private final ResumeProperties resumeProperties;
+  private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public MonsterResumeRefresher(MonsterProperties monsterProperties, ResumeProperties resumeProperties) {
+  public MonsterResumeRefresher(MonsterProperties monsterProperties, ResumeProperties resumeProperties,
+      ClientHttpConnector clientHttpConnector) {
     this.monsterProperties = monsterProperties;
     this.resumeProperties = resumeProperties;
-  }
-
-  @Override
-  public Mono<Void> refresh() {
-    HttpClient reactorHttpClient = HttpClient.create()
-        .wiretap(getClass().getCanonicalName(), DEBUG, TEXTUAL, UTF_8); // capture messages over wire
-
-    ReactorClientHttpConnector clientHttpConnector = new ReactorClientHttpConnector(reactorHttpClient);
-
-    final var webClient =
+    this.webClient =
         WebClient.builder().baseUrl("https://www.monsterindia.com")
             .clientConnector(clientHttpConnector)
             .defaultHeaders(httpHeaders -> {
@@ -71,8 +60,10 @@ public class MonsterResumeRefresher implements ResumeRefresher {
               httpHeaders.add(REFERER, "https://www.monsterindia.com/");
             })
             .build();
+  }
 
-
+  @Override
+  public Mono<Void> refresh() {
     /*
     This script has `client_id` parameter thats required to upload the file from https://media.monsterindia.com/rio/public/js/login-app-service.js
     We are looking for string of following format `client_id="<>"`

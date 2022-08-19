@@ -16,17 +16,14 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.client.MultipartBodyBuilder;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.http.client.reactive.ClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.netty.http.client.HttpClient;
 
 import java.util.regex.Pattern;
 
-import static io.netty.handler.logging.LogLevel.DEBUG;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.http.HttpHeaders.USER_AGENT;
 import static org.springframework.http.HttpMethod.GET;
@@ -34,7 +31,6 @@ import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.http.MediaType.APPLICATION_PDF;
 import static org.springframework.http.MediaType.MULTIPART_FORM_DATA;
-import static reactor.netty.transport.logging.AdvancedByteBufFormat.TEXTUAL;
 
 @Log4j2
 @Component
@@ -42,33 +38,27 @@ import static reactor.netty.transport.logging.AdvancedByteBufFormat.TEXTUAL;
 @Order(99) // lets do this before monster one
 @SuppressWarnings("unused") // since we are dealing with a component
 public class NaukriResumeRefresher implements ResumeRefresher {
-  private final String BEARER_JWT_COOKIE_NAME = "nauk_at";
+  private static final String BEARER_JWT_COOKIE_NAME = "nauk_at";
 
   private final NaukriProperties naukriProperties;
   private final ResumeProperties resumeProperties;
+  private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public NaukriResumeRefresher(NaukriProperties naukriProperties, ResumeProperties resumeProperties1) {
+  public NaukriResumeRefresher(NaukriProperties naukriProperties, ResumeProperties resumeProperties, ClientHttpConnector clientHttpConnector) {
     this.naukriProperties = naukriProperties;
-    this.resumeProperties = resumeProperties1;
-  }
-
-  @Override
-  public Mono<Void> refresh() {
-    HttpClient reactorHttpClient = HttpClient.create()
-        .wiretap(getClass().getCanonicalName(), DEBUG, TEXTUAL, UTF_8); // capture messages over wire
-
-    ReactorClientHttpConnector clientHttpConnector = new ReactorClientHttpConnector(reactorHttpClient);
-
-    //noinspection CodeBlock2Expr
-    final var webClient =
+    this.resumeProperties = resumeProperties;
+    this.webClient =
         WebClient.builder().baseUrl("https://www.naukri.com")
             .clientConnector(clientHttpConnector)
             .defaultHeaders(httpHeaders -> {
               httpHeaders.add(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36");
             })
             .build();
+  }
 
+  @Override
+  public Mono<Void> refresh() {
     // login
     /*
     curl 'https://www.naukri.com/central-login-services/v1/login' \
@@ -155,8 +145,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
 
     /*
     This script has `formKey` parameter thats required to upload the file from https://static.naukimg.com/s/5/105/j/mnj_v152.min.js
-    We are looking for string of following format `c="attachCV",d="F51f8e7e54e205"`
-    */
+    We are looking for string of following format `c="attachCV",d="<>    */
     final Pattern formKeyPattern = Pattern.compile("=\"attachCV\",d=\"(?<formKey>F[^\"]+?)\"");
     Mono<String> formKey$ = webClient
         .method(GET)
@@ -276,7 +265,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
    value: function(a) {
    var b = this
    , c = "attachCV"
-   , d = "F51f8e7e54e205"
+   , d = "<>"
    , e = ($("#" + c),
    $("#uploadBtnCont"),
    function(a) {
