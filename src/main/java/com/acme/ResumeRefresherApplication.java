@@ -12,13 +12,14 @@ import reactor.core.publisher.Flux;
 import java.util.List;
 
 @SpringBootApplication(proxyBeanMethods = false)
-public class DemoApplication {
+public class ResumeRefresherApplication {
 
   public static void main(String[] args) {
-    new SpringApplicationBuilder(DemoApplication.class)
+    new SpringApplicationBuilder(ResumeRefresherApplication.class)
         .properties("spring.output.ansi.enabled=always")
         .bannerMode(Banner.Mode.OFF)
-        .web(WebApplicationType.NONE).run(args);
+        .web(WebApplicationType.NONE)
+        .run(args);
   }
 
   @Bean
