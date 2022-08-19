@@ -59,9 +59,9 @@ grep "#block terminated with an error" "<path to log>"
 
 # Desktop notifications in ubuntu
 if [ $? != 0 ]; then
-  /usr/bin/notify-send  -t 0 "SUCCESS: Resume refresh" "$(date)";
+  /usr/bin/notify-send -t 0 "SUCCESS: Resume refresh" "<path to log>";
 else
-  /usr/bin/notify-send  -t 0 "FAIL: Resume refresh" "$(date)";
+  /usr/bin/notify-send -u critical -t 0 "FAIL: Resume refresh" "<path to log>";
 fi
 ```
 2. Schedule cron job by running `crontab -e` & Add this
