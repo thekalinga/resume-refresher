@@ -40,7 +40,7 @@ eval build/native/nativeCompile/resume-refresher \
 ```shell
 #!/usr/bin/sh
 
-# required for notify-send to work properly to current user
+# required for notify-send to work properly and send desktop notifications to current user
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 
 app_naukri_password='<naukri password>' \
