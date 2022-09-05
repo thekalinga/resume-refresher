@@ -1,5 +1,6 @@
 package com.acme.resume.refresh;
 
+import com.acme.resume.refresh.common.ResumeRefresher;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
@@ -17,13 +18,17 @@ public class ResumeRefresherApplication {
     new SpringApplicationBuilder(ResumeRefresherApplication.class)
         .properties("spring.output.ansi.enabled=always")
         .bannerMode(Banner.Mode.OFF)
-        .web(WebApplicationType.NONE)
+        .web(WebApplicationType.NONE) // We only care about webclient & we don't webflux features. Let's run the app in non-server mode
         .run(args);
   }
 
   @Bean
-  ApplicationRunner onInit(List<ResumeRefresher> refreshers) {
+  ApplicationRunner doOnInit(List<ResumeRefresher> refreshers) {
     return args -> {
+      if (refreshers.isEmpty()) {
+        throw new RuntimeException(
+            "No built in resume refreshers are enabled. Make sure you run the application by enabling atleast one resume refresher by specifying corresponding properties. For eg. by specifying app_naukri_username & app_naukri_password, etc");
+      }
       Flux.fromIterable(refreshers)
         .concatMapDelayError(ResumeRefresher::refresh) //lets allow refresh of resume to proceed even if we fail to refresh in one of the resume service provider
         .blockLast();

@@ -1,4 +1,4 @@
-package com.acme.resume.refresh;
+package com.acme.resume.refresh.common;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.reactive.ClientHttpConnector;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import reactor.netty.http.client.HttpClient;
+import reactor.netty.tcp.TcpSslContextSpec;
 
 import java.util.function.Function;
 
@@ -21,6 +22,7 @@ public final class ResumeRefresherConfiguration {
     // lets allow the callers to specify the logger name
     return loggerName -> {
       HttpClient reactorHttpClient = HttpClient.create()
+          .secure(sslContextSpec -> sslContextSpec.sslContext(TcpSslContextSpec.forClient().configure(builder -> builder.protocols("TLSv1.1", "TLSv1.2", "TLSv1.3"))))
           .wiretap(loggerName, DEBUG, TEXTUAL, UTF_8); // capture messages over wire
       return new ReactorClientHttpConnector(reactorHttpClient);
     };

@@ -1,2 +1,2 @@
-org.springframework.boot.env.EnvironmentPostProcessor=com.acme.resume.refresh.LoggingDebugEnvironmentPostProcessor
-org.springframework.nativex.type.NativeConfiguration=com.acme.resume.refresh.GraalNativeConfiguration
+org.springframework.boot.env.EnvironmentPostProcessor=com.acme.resume.refresh.common.LoggingDebugEnvironmentPostProcessor
+org.springframework.nativex.type.NativeConfiguration=com.acme.resume.refresh.common.GraalNativeConfiguration

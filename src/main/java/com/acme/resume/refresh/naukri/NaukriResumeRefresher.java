@@ -1,7 +1,8 @@
 package com.acme.resume.refresh.naukri;
 
-import com.acme.resume.refresh.ResumeProperties;
-import com.acme.resume.refresh.ResumeRefresher;
+import com.acme.resume.refresh.common.ResumeProperties;
+import com.acme.resume.refresh.common.ResumeRefresher;
+import com.acme.resume.refresh.common.ConditionalOnPropertyNotEmpty;
 import com.acme.resume.refresh.naukri.exchange.AdvertiseResumeRequest;
 import com.acme.resume.refresh.naukri.exchange.Cookie;
 import com.acme.resume.refresh.naukri.exchange.DashboardResponse;
@@ -22,6 +23,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import javax.validation.Valid;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -32,11 +34,13 @@ import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.http.MediaType.APPLICATION_PDF;
 import static org.springframework.http.MediaType.MULTIPART_FORM_DATA;
+import static org.springframework.util.Assert.isTrue;
 
 @Log4j2
 @Component
 @EnableConfigurationProperties(NaukriProperties.class)
-@Order(99) // lets do this before monster one
+@ConditionalOnPropertyNotEmpty({"app.naukri.username", "app.naukri.password"})
+@Order(200) // lets do this before monster one
 @SuppressWarnings("unused") // since we are dealing with a component
 public class NaukriResumeRefresher implements ResumeRefresher {
   private static final String BEARER_JWT_COOKIE_NAME = "nauk_at";
@@ -46,7 +50,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
   private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public NaukriResumeRefresher(NaukriProperties naukriProperties, ResumeProperties resumeProperties, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
+  public NaukriResumeRefresher(@Valid NaukriProperties naukriProperties, @Valid ResumeProperties resumeProperties, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
     this.naukriProperties = naukriProperties;
     this.resumeProperties = resumeProperties;
     this.webClient =
@@ -81,8 +85,11 @@ public class NaukriResumeRefresher implements ResumeRefresher {
         .bodyValue(new LoginRequest(naukriProperties.username(), naukriProperties.password()))
         .retrieve()
         .bodyToMono(LoginResponse.class)
-        .flatMap(response -> Flux.fromIterable(response.cookies()).filter(cookie -> cookie.name().equals(BEARER_JWT_COOKIE_NAME)).map(
-            Cookie::value).single())
+        .flatMap(response -> {
+          return Flux.fromIterable(response.cookies())
+              .filter(cookie -> cookie.name().equals(BEARER_JWT_COOKIE_NAME))
+              .map(Cookie::value).single();
+        })
         .doOnSubscribe(__ -> log.info("Attempting to fetch bearer token"))
         .doFinally(signal -> log.info("Finished attempt to fetch bearer token. Final signal received is {}", signal))
         .cache();
@@ -144,26 +151,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
               .doFinally(signal -> log.info("Finished attempt to delete resume. Final signal received is {}", signal));
         });
 
-    /*
-    This script has `formKey` parameter thats required to upload the file from https://static.naukimg.com/s/5/105/j/mnj_v152.min.js
-    We are looking for string of following format `c="attachCV",d="<>    */
-    final Pattern formKeyPattern = Pattern.compile("=\"attachCV\",d=\"(?<formKey>F[^\"]+?)\"");
-    Mono<String> formKey$ = webClient
-        .method(GET)
-        .uri("https://static.naukimg.com/s/5/105/j/mnj_v152.min.js")
-        .exchangeToMono(response -> {
-          //noinspection CodeBlock2Expr
-          return response.bodyToFlux(DataBuffer.class).as(MiscUtil::readAllBuffersAsUtf8String);
-        })
-        .map(bodyAsStr -> {
-          final var matcher = formKeyPattern.matcher(bodyAsStr);
-          // noinspection ResultOfMethodCallIgnored
-          matcher.find();
-          return matcher.group("formKey");
-        })
-        .doOnSubscribe(__ -> log.info("Attempting to fetch formKey parameter"))
-        .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal))
-        .cache();
+    Mono<String> formKey$ = fetchFormKey$().cache();
 
     /*
     curl -v 'https://filevalidation.naukri.com/file' \
@@ -243,7 +231,100 @@ public class NaukriResumeRefresher implements ResumeRefresher {
   }
 
   /**
-   This script <a href="https://static.naukimg.com/s/5/105/j/mnj_v152.min.js">java script</a> has a stupid generator which generates random <code>fileKey</code> to upload file
+   * This form key is hidden behind many layers of minified js
+   * <p>
+   * Here are main things we are looking for
+   * <p>
+   * 1. In console, we are looking for a js file named mnj_v\d+.min.js
+   * 2. Within that we are looking for string `c="attachCV",d="<>`
+   * <p>
+   * But the mnj_v\d+.min.js itself is hidden behind another min file which we can get by going to the
+   * <a href="https://www.naukri.com/nlogin/login">login page</a>
+   * <p>
+   * The above script is available both on home page post login & also on login page, but not on unauthenticated naukri main page
+   * <p>
+   * Next step is from to find a pattern of this format `src="(?<appMinJsPath>\/\/.+?\/app_v\d+.min.js)"` so we can find the path of app script
+   * <p>
+   * From app script, search for `flowName:"mnj",jsVersion:"(?<jsVersion>_v\d+)"` to know the name of the minified script that contains formKey.
+   * <p>
+   * Its quite convoluted, but since we are dealing with minified script rather than APIs, we are doing all of this to avoid the application breaking anytime they deploy new build.
+   * @return publisher that contains formKey
+   */
+  private Mono<String> fetchFormKey$() {
+    // goto login page, find src="(?<appMinJsPath>\/\/.+?\/app_v\d+.min.js)"
+
+    /*
+    This page https://www.naukri.com/nlogin/login has link to app min js
+    We are looking for string of following format `src="(?<appMinJsPath>\/\/.+?\/app_v\d+.min.js)"`
+    */
+    final Pattern appJsMinPathPattern = Pattern.compile("src=\"//(?<appMinJsPath>.+?/app_v\\d+.min.js)\"");
+    Mono<String> appJsMinUrl$ = webClient
+        .method(GET)
+        .uri("/nlogin/login")
+        .exchangeToMono(response -> {
+          //noinspection CodeBlock2Expr
+          return response.bodyToFlux(DataBuffer.class).as(MiscUtil::readAllBuffersAsUtf8String);
+        })
+        .map(bodyAsStr -> {
+          final var matcher = appJsMinPathPattern.matcher(bodyAsStr);
+          isTrue(matcher.find(), bodyAsStr + "\n\ndid not contain regex pattern " + appJsMinPathPattern.pattern());
+          return "https://" + matcher.group("appMinJsPath");
+        })
+        .doOnSubscribe(__ -> log.info("Attempting to fetch formKey parameter"))
+        .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal))
+        .cache();
+
+    // Access appJsMinUrl & get js version `flowName:"mnj",jsVersion:"(?<jsVersion>_v\d+)"`
+    final Pattern mnjJsVersionPattern = Pattern.compile("flowName:\"mnj\",jsVersion:\"(?<jsVersion>_v\\d+)\"");
+    Mono<String> mnjJsMinUrl$ = appJsMinUrl$
+        .flatMap(appJsMinUrl -> {
+          return webClient
+              .method(GET)
+              .uri(appJsMinUrl)
+              .exchangeToMono(response -> {
+                //noinspection CodeBlock2Expr
+                return response.bodyToFlux(DataBuffer.class).as(MiscUtil::readAllBuffersAsUtf8String);
+              })
+              .map(bodyAsStr -> {
+                final var matcher = mnjJsVersionPattern.matcher(bodyAsStr);
+                isTrue(matcher.find(), bodyAsStr + "\n\ndid not contain regex pattern " + mnjJsVersionPattern.pattern());
+                final var jsVersionSufixPartialString = matcher.group("jsVersion");
+                final var mnjJsMinUrl =
+                    appJsMinUrl.replaceAll("/app_v\\d+", "/mnj" + jsVersionSufixPartialString);
+                return mnjJsMinUrl;
+              })
+              .doOnSubscribe(__ -> log.info("Attempting to fetch formKey parameter"))
+              .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal));
+        });
+
+    /*
+    This script has `formKey` parameter thats required to upload the file from https://static.naukimg.com/s/5/105/j/mnj_v<>.min.js
+    We are looking for string of following format `c="attachCV",d="<>    */
+    final Pattern formKeyPattern = Pattern.compile("=\"attachCV\",d=\"(?<formKey>F[^\"]+?)\"");
+    Mono<String> formKey$ = mnjJsMinUrl$
+        .flatMap(mnjJsMinUrl -> {
+          return webClient
+              .method(GET)
+              .uri(mnjJsMinUrl)
+              .exchangeToMono(response -> {
+                //noinspection CodeBlock2Expr
+                return response.bodyToFlux(DataBuffer.class).as(MiscUtil::readAllBuffersAsUtf8String);
+              })
+              .map(bodyAsStr -> {
+                final var matcher = formKeyPattern.matcher(bodyAsStr);
+                // noinspection ResultOfMethodCallIgnored
+                matcher.find();
+                return matcher.group("formKey");
+              })
+              .doOnSubscribe(__ -> log.info("Attempting to fetch formKey parameter"))
+              .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal));
+        });
+
+    return formKey$;
+  }
+
+  /**
+   This script <a href="https://static.naukimg.com/s/5/105/j/mnj_v<number>.min.js">java script</a> has a stupid generator which generates random <code>fileKey</code> to upload file
 
    Here is the anchor <code>f = "U" + e(13)</code> to the original source
 

@@ -1,7 +1,8 @@
 package com.acme.resume.refresh.monster;
 
-import com.acme.resume.refresh.ResumeProperties;
-import com.acme.resume.refresh.ResumeRefresher;
+import com.acme.resume.refresh.common.ConditionalOnPropertyNotEmpty;
+import com.acme.resume.refresh.common.ResumeProperties;
+import com.acme.resume.refresh.common.ResumeRefresher;
 import com.acme.resume.refresh.monster.exchange.InitialCookieAndRedirectUrl;
 import com.acme.resume.refresh.monster.exchange.LoginResponse;
 import com.acme.resume.refresh.monster.exchange.UploadResponse;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import javax.validation.Valid;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -38,7 +40,8 @@ import static org.springframework.web.reactive.function.BodyInserters.fromFormDa
 @Log4j2
 @Component
 @EnableConfigurationProperties(MonsterProperties.class)
-@Order(999) // uploading of resume fails most of the time. Let do this at end
+@ConditionalOnPropertyNotEmpty({"app.monster.username", "app.monster.password"})
+@Order(300) // uploading of resume fails most of the time. Let do this at end
 @SuppressWarnings("unused") // since we are dealing with a component
 public class MonsterResumeRefresher implements ResumeRefresher {
   private static final String INITIAL_COOKIE_NAME = "MRE";
@@ -49,7 +52,7 @@ public class MonsterResumeRefresher implements ResumeRefresher {
   private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public MonsterResumeRefresher(MonsterProperties monsterProperties, ResumeProperties resumeProperties,
+  public MonsterResumeRefresher(@Valid MonsterProperties monsterProperties, @Valid ResumeProperties resumeProperties,
       ClientHttpConnector clientHttpConnector, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
     this.monsterProperties = monsterProperties;
     this.resumeProperties = resumeProperties;

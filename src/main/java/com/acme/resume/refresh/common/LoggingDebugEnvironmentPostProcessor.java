@@ -1,4 +1,4 @@
-package com.acme.resume.refresh;
+package com.acme.resume.refresh.common;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;

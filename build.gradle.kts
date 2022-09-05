@@ -30,9 +30,10 @@ repositories {
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
     // to specify native configuration in a dedicated configuration class
     compileOnly("org.springframework.experimental:spring-aot:0.12.1")
-    // disabled bcoz of issues with graalvm native image. log4j2 has major issues with native image. logback has conditional support which I dont want to explore right now
+    // disabled bcoz of issues with graalvm native image. log4j2 has major issues with native image. logback has conditional support. So lets disable log4j2 for now
 //    implementation("org.codehaus.janino:janino:3.1.7")
 //    implementation("org.springframework.boot:spring-boot-starter-log4j2")
 //    implementation("com.lmax:disruptor:3.4.4")

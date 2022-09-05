@@ -1,7 +1,8 @@
 package com.acme.resume.refresh.instahyre;
 
-import com.acme.resume.refresh.ResumeProperties;
-import com.acme.resume.refresh.ResumeRefresher;
+import com.acme.resume.refresh.common.ConditionalOnPropertyNotEmpty;
+import com.acme.resume.refresh.common.ResumeProperties;
+import com.acme.resume.refresh.common.ResumeRefresher;
 import com.acme.resume.refresh.instahyre.exchange.CandidateResponse;
 import com.acme.resume.refresh.instahyre.exchange.LoginRequest;
 import com.acme.resume.refresh.instahyre.exchange.SessionIdAndCsrfToken;
@@ -14,9 +15,11 @@ import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.client.reactive.ClientHttpConnector;
 import org.springframework.stereotype.Component;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import javax.validation.Valid;
 import java.nio.file.Paths;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -39,7 +42,8 @@ import static org.springframework.util.Base64Utils.encodeToString;
 @Log4j2
 @Component
 @EnableConfigurationProperties(InstahyreProperties.class)
-@Order(1) // lets start updating resume here 1st
+@ConditionalOnPropertyNotEmpty({"app.instahyre.username", "app.instahyre.password"})
+@Order(100) // lets start updating resume here 1st
 @SuppressWarnings("unused") // since we are dealing with a component
 public class InstahyreResumeRefresher implements ResumeRefresher {
 
@@ -52,7 +56,7 @@ public class InstahyreResumeRefresher implements ResumeRefresher {
   private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public InstahyreResumeRefresher(InstahyreProperties instahyreProperties, ResumeProperties resumeProperties, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
+  public InstahyreResumeRefresher(@Valid InstahyreProperties instahyreProperties, @Valid ResumeProperties resumeProperties, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
     this.instahyreProperties = instahyreProperties;
     this.resumeProperties = resumeProperties;
     this.webClient =
