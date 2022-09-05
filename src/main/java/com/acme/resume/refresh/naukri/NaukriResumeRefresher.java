@@ -289,6 +289,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
                 final var matcher = mnjJsVersionPattern.matcher(bodyAsStr);
                 isTrue(matcher.find(), bodyAsStr + "\n\ndid not contain regex pattern " + mnjJsVersionPattern.pattern());
                 final var jsVersionSufixPartialString = matcher.group("jsVersion");
+                //noinspection UnnecessaryLocalVariable
                 final var mnjJsMinUrl =
                     appJsMinUrl.replaceAll("/app_v\\d+", "/mnj" + jsVersionSufixPartialString);
                 return mnjJsMinUrl;
@@ -299,8 +300,10 @@ public class NaukriResumeRefresher implements ResumeRefresher {
 
     /*
     This script has `formKey` parameter thats required to upload the file from https://static.naukimg.com/s/5/105/j/mnj_v<>.min.js
-    We are looking for string of following format `c="attachCV",d="<>    */
+    We are looking for string of following format `c="attachCV",d="F<>"`
+    */
     final Pattern formKeyPattern = Pattern.compile("=\"attachCV\",d=\"(?<formKey>F[^\"]+?)\"");
+    //noinspection UnnecessaryLocalVariable
     Mono<String> formKey$ = mnjJsMinUrl$
         .flatMap(mnjJsMinUrl -> {
           return webClient
