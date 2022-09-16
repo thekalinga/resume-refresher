@@ -43,6 +43,7 @@ import static org.springframework.util.Assert.isTrue;
 @Order(200) // lets do this before monster one
 @SuppressWarnings("unused") // since we are dealing with a component
 public class NaukriResumeRefresher implements ResumeRefresher {
+  //@formatter:off
   private static final String BEARER_JWT_COOKIE_NAME = "nauk_at";
 
   private final NaukriProperties naukriProperties;
@@ -50,7 +51,9 @@ public class NaukriResumeRefresher implements ResumeRefresher {
   private final WebClient webClient;
 
   @SuppressWarnings("unused") // since we are dealing with a component
-  public NaukriResumeRefresher(@Valid NaukriProperties naukriProperties, @Valid ResumeProperties resumeProperties, Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
+  public NaukriResumeRefresher(@Valid NaukriProperties naukriProperties,
+      @Valid ResumeProperties resumeProperties,
+      Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
     this.naukriProperties = naukriProperties;
     this.resumeProperties = resumeProperties;
     this.webClient =
@@ -64,95 +67,22 @@ public class NaukriResumeRefresher implements ResumeRefresher {
 
   @Override
   public Mono<Void> refresh() {
-    // login
-    /*
-    curl 'https://www.naukri.com/central-login-services/v1/login' \
-      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
-      -H 'appid: 103' \
-      -H 'systemid: jobseeker' \
-      -H 'content-type: application/json' \
-      --data-raw $'{"username":"<>","password":"<>"}' | jq
-    */
-    // fetching cookie value with name `nauk_at`
-    Mono<String> bearerToken$ = webClient
-        .method(POST)
-        .uri("/central-login-services/v1/login")
-        .headers(httpHeaders -> {
-          httpHeaders.add("appid", "103");
-          httpHeaders.add("systemid", "jobseeker");
-        })
-        .contentType(APPLICATION_JSON)
-        .bodyValue(new LoginRequest(naukriProperties.username(), naukriProperties.password()))
-        .retrieve()
-        .bodyToMono(LoginResponse.class)
-        .flatMap(response -> {
-          return Flux.fromIterable(response.cookies())
-              .filter(cookie -> cookie.name().equals(BEARER_JWT_COOKIE_NAME))
-              .map(Cookie::value).single();
-        })
-        .doOnSubscribe(__ -> log.info("Attempting to fetch bearer token"))
-        .doFinally(signal -> log.info("Finished attempt to fetch bearer token. Final signal received is {}", signal))
-        .cache();
+    Mono<String> bearerToken$ = buildBearerToken$().cache();
+    Mono<String> profileId$ = buildProfileId$(bearerToken$).cache();
+    Mono<Void> deleteResume$ = buildDeleteResume$(bearerToken$, profileId$);
+    Mono<String> formKey$ = buildFormKey$().cache();
+    Mono<Void> uploadAndAdvertiseResume$ = buildUploadAndAdvertiseResume$(formKey$, bearerToken$, profileId$);
 
-    /*
-    curl 'https://www.naukri.com/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard' \
-      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36'
-      -H 'appid: 105' \
-      -H 'systemid: Naukri' \
-      -H 'accept: application/json' \
-      -H 'authorization: Bearer <>' \
-     */
-    Mono<String> profileId$ = bearerToken$
-        .flatMap(bearerToken -> {
-          //noinspection CodeBlock2Expr
-          return webClient
-              .method(GET)
-              .uri("/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard")
-              .headers(httpHeaders -> {
-                httpHeaders.add("appid", "105");
-                httpHeaders.add("systemid", "Naukri");
-                httpHeaders.add(AUTHORIZATION, "Bearer " + bearerToken);
-              })
-              .accept(APPLICATION_JSON)
-              .retrieve()
-              .bodyToMono(DashboardResponse.class)
-              .map(response -> response.dashboard().profileId())
-              .doOnSubscribe(__ -> log.info("Attempting to fetch profile id"))
-              .doFinally(signal -> log.info("Finished attempt to fetch profile id. Final signal received is {}", signal));
-        })
-        .cache();
+    // formKey$ often gives errors. Lets first fetch that before deleting resume to be on the safe side
+    return formKey$
+        .then(deleteResume$)
+        .then(uploadAndAdvertiseResume$)
+        .doOnSubscribe(__ -> log.info("Attempting to refresh resume on Naukri"))
+        .doFinally(signal -> log.info("Finished attempt to refresh resume on Naukri. Final signal received is {}", signal));
+  }
 
-    /*
-    curl 'https://www.naukri.com/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/<>/deleteResume' \
-      -X 'POST' \
-      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
-      -H 'appid: 105' \
-      -H 'systemid: 105' \
-      -H 'authorization: Bearer <>' \
-      -H 'content-length: 0' \
-      -H 'x-http-method-override: DELETE'
-     */
-    Mono<Void> deleteResume$ = bearerToken$.zipWith(profileId$)
-        .flatMap(bearerTokenAndProfileId -> {
-          //noinspection CodeBlock2Expr
-          return webClient
-              .method(POST)
-              .uri("/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/" + bearerTokenAndProfileId.getT2() + "/deleteResume")
-              .headers(httpHeaders -> {
-                httpHeaders.add("appid", "105");
-                httpHeaders.add("systemid", "105");
-                httpHeaders.add(AUTHORIZATION, "Bearer " + bearerTokenAndProfileId.getT1());
-                httpHeaders.add("x-http-method-override", "DELETE");
-              })
-              .contentLength(0)
-              .retrieve()
-              .bodyToMono(Void.class)
-              .doOnSubscribe(__ -> log.info("Attempting to delete resume"))
-              .doFinally(signal -> log.info("Finished attempt to delete resume. Final signal received is {}", signal));
-        });
-
-    Mono<String> formKey$ = fetchFormKey$().cache();
-
+  private Mono<Void> buildUploadAndAdvertiseResume$(Mono<String> formKey$,
+      Mono<String> bearerToken$, Mono<String> profileId$) {
     /*
     curl -v 'https://filevalidation.naukri.com/file' \
       -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
@@ -221,13 +151,70 @@ public class NaukriResumeRefresher implements ResumeRefresher {
               .doFinally(signal -> log.info("Finished attempt to advertise uploaded resume. Final signal received is {}", signal));
         });
 
-    // formKey$ is giving errors. So, lets not delete the resume unless formKey$, bearerToken$ & profileId$ are successful
-    return formKey$
-        .then(deleteResume$)
-        .then(uploadResume$)
-        .then(advertiseResume$)
-        .doOnSubscribe(__ -> log.info("Attempting to refresh resume on Naukri"))
-        .doFinally(signal -> log.info("Finished attempt to refresh resume on Naukri. Final signal received is {}", signal));
+    return uploadResume$
+        .then(advertiseResume$);
+  }
+
+  private Mono<Void> buildDeleteResume$(Mono<String> bearerToken$, Mono<String> profileId$) {
+    /*
+    curl 'https://www.naukri.com/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/<>/deleteResume' \
+      -X 'POST' \
+      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
+      -H 'appid: 105' \
+      -H 'systemid: 105' \
+      -H 'authorization: Bearer <>' \
+      -H 'content-length: 0' \
+      -H 'x-http-method-override: DELETE'
+     */
+    Mono<Void> deleteResume$ = bearerToken$.zipWith(profileId$)
+        .flatMap(bearerTokenAndProfileId -> {
+          //noinspection CodeBlock2Expr
+          return webClient
+              .method(POST)
+              .uri("/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/" + bearerTokenAndProfileId.getT2() + "/deleteResume")
+              .headers(httpHeaders -> {
+                httpHeaders.add("appid", "105");
+                httpHeaders.add("systemid", "105");
+                httpHeaders.add(AUTHORIZATION, "Bearer " + bearerTokenAndProfileId.getT1());
+                httpHeaders.add("x-http-method-override", "DELETE");
+              })
+              .contentLength(0)
+              .retrieve()
+              .bodyToMono(Void.class)
+              .doOnSubscribe(__ -> log.info("Attempting to delete resume"))
+              .doFinally(signal -> log.info("Finished attempt to delete resume. Final signal received is {}", signal));
+        });
+
+    return deleteResume$;
+  }
+
+  private Mono<String> buildProfileId$(Mono<String> bearerToken$) {
+    /*
+    curl 'https://www.naukri.com/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard' \
+      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36'
+      -H 'appid: 105' \
+      -H 'systemid: Naukri' \
+      -H 'accept: application/json' \
+      -H 'authorization: Bearer <>' \
+     */
+    return bearerToken$
+        .flatMap(bearerToken -> {
+          //noinspection CodeBlock2Expr
+          return webClient
+              .method(GET)
+              .uri("/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard")
+              .headers(httpHeaders -> {
+                httpHeaders.add("appid", "105");
+                httpHeaders.add("systemid", "Naukri");
+                httpHeaders.add(AUTHORIZATION, "Bearer " + bearerToken);
+              })
+              .accept(APPLICATION_JSON)
+              .retrieve()
+              .bodyToMono(DashboardResponse.class)
+              .map(response -> response.dashboard().profileId())
+              .doOnSubscribe(__ -> log.info("Attempting to fetch profile id"))
+              .doFinally(signal -> log.info("Finished attempt to fetch profile id. Final signal received is {}", signal));
+        });
   }
 
   /**
@@ -248,9 +235,10 @@ public class NaukriResumeRefresher implements ResumeRefresher {
    * From app script, search for `flowName:"mnj",jsVersion:"(?<jsVersion>_v\d+)"` to know the name of the minified script that contains formKey.
    * <p>
    * Its quite convoluted, but since we are dealing with minified script rather than APIs, we are doing all of this to avoid the application breaking anytime they deploy new build.
+   *
    * @return publisher that contains formKey
    */
-  private Mono<String> fetchFormKey$() {
+  private Mono<String> buildFormKey$() {
     // goto login page, find src="(?<appMinJsPath>\/\/.+?\/app_v\d+.min.js)"
 
     /*
@@ -271,8 +259,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
           return "https://" + matcher.group("appMinJsPath");
         })
         .doOnSubscribe(__ -> log.info("Attempting to fetch formKey parameter"))
-        .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal))
-        .cache();
+        .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal));
 
     // Access appJsMinUrl & get js version `flowName:"mnj",jsVersion:"(?<jsVersion>_v\d+)"`
     final Pattern mnjJsVersionPattern = Pattern.compile("flowName:\"mnj\",jsVersion:\"(?<jsVersion>_v\\d+)\"");
@@ -326,57 +313,88 @@ public class NaukriResumeRefresher implements ResumeRefresher {
     return formKey$;
   }
 
+  Mono<String> buildBearerToken$() {
+    // login
+    /*
+    curl 'https://www.naukri.com/central-login-services/v1/login' \
+      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
+      -H 'appid: 103' \
+      -H 'systemid: jobseeker' \
+      -H 'content-type: application/json' \
+      --data-raw $'{"username":"<>","password":"<>"}' | jq
+    */
+    // fetching cookie value with name `nauk_at`
+    return webClient
+        .method(POST)
+        .uri("/central-login-services/v1/login")
+        .headers(httpHeaders -> {
+          httpHeaders.add("appid", "103");
+          httpHeaders.add("systemid", "jobseeker");
+        })
+        .contentType(APPLICATION_JSON)
+        .bodyValue(new LoginRequest(naukriProperties.username(), naukriProperties.password()))
+        .retrieve()
+        .bodyToMono(LoginResponse.class)
+        .flatMap(response -> {
+          return Flux.fromIterable(response.cookies())
+              .filter(cookie -> cookie.name().equals(BEARER_JWT_COOKIE_NAME))
+              .map(Cookie::value).single();
+        })
+        .doOnSubscribe(__ -> log.info("Attempting to fetch bearer token"))
+        .doFinally(signal -> log.info("Finished attempt to fetch bearer token. Final signal received is {}", signal));
+  }
+
   /**
-   This script <a href="https://static.naukimg.com/s/5/105/j/mnj_v<number>.min.js">java script</a> has a stupid generator which generates random <code>fileKey</code> to upload file
-
-   Here is the anchor <code>f = "U" + e(13)</code> to the original source
-
-   Function that generates 13 characters is
-   <pre>
-   <code>
-   function(a) {
-   for (var b = "", c = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", d = a; d > 0; --d)
-   b += c[Math.round(Math.random() * (c.length - 1))];
-   return b
-   }
-   </code>
-   </pre>
-
-   Context
-   <pre>
-   <code>
-   {
-   key: "initUploader",
-   value: function(a) {
-   var b = this
-   , c = "attachCV"
-   , d = "<>"
-   , e = ($("#" + c),
-   $("#uploadBtnCont"),
-   function(a) {
-   for (var b = "", c = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", d = a; d > 0; --d)
-   b += c[Math.round(Math.random() * (c.length - 1))];
-   return b
-   }
-   )
-   , f = "U" + e(13)
-   , g = "//my.naukri.com"
-   , h = {
-   uploadTarget: {
-   saveCloudUrl: yb,
-   saveFileUrl: Ec,
-   deleteUrl: "//files.naukri.com/0/deleteFile.php"
-   },
-   parseResume: g + "/CVParser/parseResume"
-   };
-   window.resumeParser = {
-   util: {
-   _trackEvent: {}
-   }
-   },
-   ...
-   </code>
-   </pre>
+   * This script <a href="https://static.naukimg.com/s/5/105/j/mnj_v<number>.min.js">java script</a> has a generator which generates random <code>fileKey</code> to upload file
+   * <p>
+   * Here is the anchor <code>f = "U" + e(13)</code> to the original source
+   * <p>
+   * Function that generates 13 characters is
+   * <pre>
+   * <code>
+   * function(a) {
+   * for (var b = "", c = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", d = a; d > 0; --d)
+   * b += c[Math.round(Math.random() * (c.length - 1))];
+   * return b
+   * }
+   * </code>
+   * </pre>
+   * <p>
+   * Context
+   * <pre>
+   * <code>
+   * {
+   * key: "initUploader",
+   * value: function(a) {
+   * var b = this
+   * , c = "attachCV"
+   * , d = "<>"
+   * , e = ($("#" + c),
+   * $("#uploadBtnCont"),
+   * function(a) {
+   * for (var b = "", c = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", d = a; d > 0; --d)
+   * b += c[Math.round(Math.random() * (c.length - 1))];
+   * return b
+   * }
+   * )
+   * , f = "U" + e(13)
+   * , g = "//my.naukri.com"
+   * , h = {
+   * uploadTarget: {
+   * saveCloudUrl: yb,
+   * saveFileUrl: Ec,
+   * deleteUrl: "//files.naukri.com/0/deleteFile.php"
+   * },
+   * parseResume: g + "/CVParser/parseResume"
+   * };
+   * window.resumeParser = {
+   * util: {
+   * _trackEvent: {}
+   * }
+   * },
+   * ...
+   * </code>
+   * </pre>
    */
   private String generateRandomFileKey() {
     /*
@@ -395,4 +413,5 @@ public class NaukriResumeRefresher implements ResumeRefresher {
     return builder.toString();
   }
 
+  //@formatter:on
 }
