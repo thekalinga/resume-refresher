@@ -223,45 +223,28 @@ public class NaukriResumeRefresher implements ResumeRefresher {
   }
 
   /**
-   * This form key is hidden behind many layers of minified js
-   * <p>
-   * Here are main things we are looking for
-   * <p>
-   * 1. In console, we are looking for a js file named mnj_v\d+.min.js
-   * 2. Within that we are looking for string `c="attachCV",d="<>`
-   * <p>
-   * But the mnj_v\d+.min.js itself is hidden behind another min file which we can get by going to the
-   * <a href="https://www.nma.mobi/nlogin/login">login page</a>
-   * <p>
-   * The above script is available both on home page post login & also on login page, but not on unauthenticated naukri main page
-   * <p>
-   * Next step is from to find a pattern of this format `src="(?<appMinJsPath>\/\/.+?\/app_v\d+.min.js)"` so we can find the path of app script
-   * <p>
-   * From app script, search for `flowName:"mnj",jsVersion:"(?<jsVersion>_v\d+)"` to know the name of the minified script that contains formKey.
-   * <p>
-   * Its quite convoluted, but since we are dealing with minified script rather than APIs, we are doing all of this to avoid the application breaking anytime they deploy new build.
+   *  This value is hardcoded in apk & same value is also available if we can navigate to `naukri.com/nlogin/login`, but this url is kept behind Akamai bot blocker & its blocking us access. Since its already hardcoded in app, lets also hardcoded it.
+   *  <p>
+   *  Here is how you can get latest value from naukri APK
+   *  <ol>
+   *  <li>Download the naukri apk</li>
+   *  <li>Decompile apk using apktool</li>
+   *  <li>Search for the following regex (case sensitive) <pre>F[0-9a-f]{12}</pre></li>
+   *  </ol>
+   *  It searches for values that start with capital `F` followed by 12 hex chars. Thats the secret number used for `formKey`. Also you can search for `formKey` aswell till you find something thats assigned to it. It will be of the format
+   *  <p>
+   *  You will see something of the format. Copy the value
+   *  <pre>
+   *     const-string v9, "formKey"
    *
+   *     const-string v10, "F51f8e7e54e205"
+   *
+   *         .line 15
+   *     invoke-virtual {v7, v9, v10}, Lc2/c0$a;->a(Ljava/lang/String;Ljava/lang/String;)Lc2/c0$a;
+   *  <pre>
    * @return publisher that contains formKey
    */
   private Mono<String> buildFormKey$() {
-    // This value is hardcoded in apk & same value is also available if we can navigate to `naukri.com/nlogin/login`, but this url is kept behind Akamai bot blocker & its blocking us access. Since its already hardcoded in app, lets also hardcoded it.
-
-    // Here is how you can get latest value from naukri APK
-    // 1. Download the naukri apk
-    // 2. Decompile apk using apktool
-    // 3. Search for the following regex (case sensitive)
-    // `F[0-9a-f]{12}`
-    // It searches for values that start with capital `F` followed by 12 hex chars. Thats the secret number used for `formKey`. Also you can search for `formKey` aswell till you find something thats assigned to it. It will be of the format
-    // You will see something of the format. Copy the value
-    //`
-    //    const-string v9, "formKey"
-    //
-    //    const-string v10, "F51f8e7e54e205"
-    //
-    //        .line 15
-    //    invoke-virtual {v7, v9, v10}, Lc2/c0$a;->a(Ljava/lang/String;Ljava/lang/String;)Lc2/c0$a;
-    //`
-
     return Mono.just("F51f8e7e54e205");
   }
 
