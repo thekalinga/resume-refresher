@@ -22,8 +22,6 @@ app_instahyre_username='<instahyre username>' app_instahyre_password='<instahyre
 app_naukri_username='<naukri username>' app_naukri_password='<naukri password>'
 ```
 
-> Naukri moved its servers behind Akamai bot blocker & its blocking all calls from this program. There is a workaround for it, but I wont be publishing it as --- if I publish it --- Naukri might chose to block the hack I currently have. So consider this app doesnt refresh resume on naukri till you find the hack yourself.
-
 ## How to run
 
 ```shell

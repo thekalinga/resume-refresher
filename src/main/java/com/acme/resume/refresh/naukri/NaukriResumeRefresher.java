@@ -56,13 +56,18 @@ public class NaukriResumeRefresher implements ResumeRefresher {
       Function<String, ClientHttpConnector> loggerNameToClientHttpConnectorMapper) {
     this.naukriProperties = naukriProperties;
     this.resumeProperties = resumeProperties;
-    this.webClient =
-        WebClient.builder().baseUrl("https://www.naukri.com")
-            .clientConnector(loggerNameToClientHttpConnectorMapper.apply(getClass().getCanonicalName()))
-            .defaultHeaders(httpHeaders -> {
-              httpHeaders.add(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36");
-            })
-            .build();
+    this.webClient = WebClient.builder().baseUrl("https://www.nma.mobi")
+        .clientConnector(loggerNameToClientHttpConnectorMapper.apply(getClass().getCanonicalName()))
+        .defaultHeaders(httpHeaders -> {
+          //  TODO: Naukri moved its login page behind Akamai bot blocker recently
+          // Akamai is blocking even get calls & considering us to be a bot. Is it because it is expecting certain headers to be there/expecting HTTP2 to be used when its a browser?
+          //  For some reason akamai is allowing curl to go thru but not browser. Why?
+          // do we need to take the header only login page & use non-curl header so that akamai doesnt block us?
+          // Some reading: https://www.zenrows.com/blog/bypass-akamai#conclusion
+          //              httpHeaders.add(USER_AGENT, "Dalvik/2.1.0 (Linux; U; Android 5.1.1; Android SDK built for x86_64 Build/LMY48X");
+          // lets make calls as Android client to bypass Akamai bot
+          httpHeaders.add(USER_AGENT, "Dalvik/2.1.0 (Linux; U; Android 5.1.1; Android SDK built for x86_64 Build/LMY48X");
+        }).build();
   }
 
   @Override
@@ -84,8 +89,8 @@ public class NaukriResumeRefresher implements ResumeRefresher {
   private Mono<Void> buildUploadAndAdvertiseResume$(Mono<String> formKey$,
       Mono<String> bearerToken$, Mono<String> profileId$) {
     /*
-    curl -v 'https://filevalidation.naukri.com/file' \
-      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
+    curl -v 'https://filevalidation.nma.mobi/file' \
+      -H 'user-agent: Dalvik/2.1.0 (Linux; U; Android 5.1.1; Android SDK built for x86_64 Build/LMY48X' \
       -H 'appid: 105' \
       -H 'systemid: fileupload' \
       -F formKey=<> \
@@ -122,8 +127,8 @@ public class NaukriResumeRefresher implements ResumeRefresher {
         });
 
     /*
-     *  curl 'https://www.naukri.com/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/<>/advResume' \
-     *   -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
+     *  curl 'https://www.nma.mobi/apigateway/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/<>/advResume' \
+     *   -H 'user-agent: Dalvik/2.1.0 (Linux; U; Android 5.1.1; Android SDK built for x86_64 Build/LMY48X' \
      *   -H 'appid: 105' \
      *   -H 'systemid: 105' \
      *   -H 'authorization: Bearer <>' \
@@ -136,7 +141,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
           //noinspection CodeBlock2Expr
           return webClient
               .method(POST)
-              .uri("/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/" + bearerTokenAndProfileIdAndFormKey.getT2() + "/advResume")
+              .uri("/apigateway/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/" + bearerTokenAndProfileIdAndFormKey.getT2() + "/advResume")
               .headers(httpHeaders -> {
                 httpHeaders.add("appid", "105");
                 httpHeaders.add("systemid", "105");
@@ -157,9 +162,9 @@ public class NaukriResumeRefresher implements ResumeRefresher {
 
   private Mono<Void> buildDeleteResume$(Mono<String> bearerToken$, Mono<String> profileId$) {
     /*
-    curl 'https://www.naukri.com/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/<>/deleteResume' \
+    curl 'https://www.nma.mobi/apigateway/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/<>/deleteResume' \
       -X 'POST' \
-      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
+      -H 'user-agent: Dalvik/2.1.0 (Linux; U; Android 5.1.1; Android SDK built for x86_64 Build/LMY48X' \
       -H 'appid: 105' \
       -H 'systemid: 105' \
       -H 'authorization: Bearer <>' \
@@ -171,7 +176,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
           //noinspection CodeBlock2Expr
           return webClient
               .method(POST)
-              .uri("/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/" + bearerTokenAndProfileId.getT2() + "/deleteResume")
+              .uri("/apigateway/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/" + bearerTokenAndProfileId.getT2() + "/deleteResume")
               .headers(httpHeaders -> {
                 httpHeaders.add("appid", "105");
                 httpHeaders.add("systemid", "105");
@@ -190,8 +195,8 @@ public class NaukriResumeRefresher implements ResumeRefresher {
 
   private Mono<String> buildProfileId$(Mono<String> bearerToken$) {
     /*
-    curl 'https://www.naukri.com/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard' \
-      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36'
+    curl 'https://www.nma.mobi/apigateway/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard' \
+      -H 'user-agent: Dalvik/2.1.0 (Linux; U; Android 5.1.1; Android SDK built for x86_64 Build/LMY48X'
       -H 'appid: 105' \
       -H 'systemid: Naukri' \
       -H 'accept: application/json' \
@@ -202,7 +207,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
           //noinspection CodeBlock2Expr
           return webClient
               .method(GET)
-              .uri("/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard")
+              .uri("/apigateway/servicegateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard")
               .headers(httpHeaders -> {
                 httpHeaders.add("appid", "105");
                 httpHeaders.add("systemid", "Naukri");
@@ -226,7 +231,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
    * 2. Within that we are looking for string `c="attachCV",d="<>`
    * <p>
    * But the mnj_v\d+.min.js itself is hidden behind another min file which we can get by going to the
-   * <a href="https://www.naukri.com/nlogin/login">login page</a>
+   * <a href="https://www.nma.mobi/nlogin/login">login page</a>
    * <p>
    * The above script is available both on home page post login & also on login page, but not on unauthenticated naukri main page
    * <p>
@@ -239,89 +244,36 @@ public class NaukriResumeRefresher implements ResumeRefresher {
    * @return publisher that contains formKey
    */
   private Mono<String> buildFormKey$() {
-    // goto login page, find src="(?<appMinJsPath>\/\/.+?\/app_v\d+.min.js)"
+    // This value is hardcoded in apk & same value is also available if we can navigate to `naukri.com/nlogin/login`, but this url is kept behind Akamai bot blocker & its blocking us access. Since its already hardcoded in app, lets also hardcoded it.
 
-    /*
-    This page https://www.naukri.com/nlogin/login has link to app min js
-    We are looking for string of following format `src="(?<appMinJsPath>\/\/.+?\/app_v\d+.min.js)"`
-    */
-    final Pattern appJsMinPathPattern = Pattern.compile("src=\"//(?<appMinJsPath>.+?/app_v\\d+.min.js)\"");
-    Mono<String> appJsMinUrl$ = webClient
-        .method(GET)
-        .uri("/nlogin/login")
-        .exchangeToMono(response -> {
-          //noinspection CodeBlock2Expr
-          return response.bodyToFlux(DataBuffer.class).as(MiscUtil::readAllBuffersAsUtf8String);
-        })
-        .map(bodyAsStr -> {
-          final var matcher = appJsMinPathPattern.matcher(bodyAsStr);
-          isTrue(matcher.find(), bodyAsStr + "\n\ndid not contain regex pattern " + appJsMinPathPattern.pattern());
-          return "https://" + matcher.group("appMinJsPath");
-        })
-        .doOnSubscribe(__ -> log.info("Attempting to fetch formKey parameter"))
-        .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal));
+    // Here is how you can get latest value from naukri APK
+    // 1. Download the naukri apk
+    // 2. Decompile apk using apktool
+    // 3. Search for the following regex (case sensitive)
+    // `F[0-9a-f]{12}`
+    // It searches for values that start with capital `F` followed by 12 hex chars. Thats the secret number used for `formKey`. Also you can search for `formKey` aswell till you find something thats assigned to it. It will be of the format
+    // You will see something of the format. Copy the value
+    //`
+    //    const-string v9, "formKey"
+    //
+    //    const-string v10, "F51f8e7e54e205"
+    //
+    //        .line 15
+    //    invoke-virtual {v7, v9, v10}, Lc2/c0$a;->a(Ljava/lang/String;Ljava/lang/String;)Lc2/c0$a;
+    //`
 
-    // Access appJsMinUrl & get js version `flowName:"mnj",jsVersion:"(?<jsVersion>_v\d+)"`
-    final Pattern mnjJsVersionPattern = Pattern.compile("flowName:\"mnj\",jsVersion:\"(?<jsVersion>_v\\d+)\"");
-    Mono<String> mnjJsMinUrl$ = appJsMinUrl$
-        .flatMap(appJsMinUrl -> {
-          return webClient
-              .method(GET)
-              .uri(appJsMinUrl)
-              .exchangeToMono(response -> {
-                //noinspection CodeBlock2Expr
-                return response.bodyToFlux(DataBuffer.class).as(MiscUtil::readAllBuffersAsUtf8String);
-              })
-              .map(bodyAsStr -> {
-                final var matcher = mnjJsVersionPattern.matcher(bodyAsStr);
-                isTrue(matcher.find(), bodyAsStr + "\n\ndid not contain regex pattern " + mnjJsVersionPattern.pattern());
-                final var jsVersionSufixPartialString = matcher.group("jsVersion");
-                //noinspection UnnecessaryLocalVariable
-                final var mnjJsMinUrl =
-                    appJsMinUrl.replaceAll("/app_v\\d+", "/mnj" + jsVersionSufixPartialString);
-                return mnjJsMinUrl;
-              })
-              .doOnSubscribe(__ -> log.info("Attempting to fetch formKey parameter"))
-              .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal));
-        });
-
-    /*
-    This script has `formKey` parameter thats required to upload the file from https://static.naukimg.com/s/5/105/j/mnj_v<>.min.js
-    We are looking for string of following format `c="attachCV",d="F<>"`
-    */
-    final Pattern formKeyPattern = Pattern.compile("=\"attachCV\",d=\"(?<formKey>F[^\"]+?)\"");
-    //noinspection UnnecessaryLocalVariable
-    Mono<String> formKey$ = mnjJsMinUrl$
-        .flatMap(mnjJsMinUrl -> {
-          return webClient
-              .method(GET)
-              .uri(mnjJsMinUrl)
-              .exchangeToMono(response -> {
-                //noinspection CodeBlock2Expr
-                return response.bodyToFlux(DataBuffer.class).as(MiscUtil::readAllBuffersAsUtf8String);
-              })
-              .map(bodyAsStr -> {
-                final var matcher = formKeyPattern.matcher(bodyAsStr);
-                // noinspection ResultOfMethodCallIgnored
-                matcher.find();
-                return matcher.group("formKey");
-              })
-              .doOnSubscribe(__ -> log.info("Attempting to fetch formKey parameter"))
-              .doFinally(signal -> log.info("Finished attempt to fetch formKey parameter. Final signal received is {}", signal));
-        });
-
-    return formKey$;
+    return Mono.just("F51f8e7e54e205");
   }
 
   Mono<String> buildBearerToken$() {
     // login
     /*
-    curl 'https://www.naukri.com/central-login-services/v1/login' \
-      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.81 Safari/537.36' \
+    curl 'https://www.nma.mobi/central-login-services/v1/login' \
+      -H 'user-agent: Dalvik/2.1.0 (Linux; U; Android 5.1.1; Android SDK built for x86_64 Build/LMY48X' \
       -H 'appid: 103' \
       -H 'systemid: jobseeker' \
       -H 'content-type: application/json' \
-      --data-raw $'{"username":"<>","password":"<>"}' | jq
+      --data-raw $'{"username":"<>", "password":"<>", "isLoginByEmail": true}' | jq
     */
     // fetching cookie value with name `nauk_at`
     return webClient
@@ -332,7 +284,7 @@ public class NaukriResumeRefresher implements ResumeRefresher {
           httpHeaders.add("systemid", "jobseeker");
         })
         .contentType(APPLICATION_JSON)
-        .bodyValue(new LoginRequest(naukriProperties.username(), naukriProperties.password()))
+        .bodyValue(new LoginRequest(naukriProperties.username(), naukriProperties.password(), true))
         .retrieve()
         .bodyToMono(LoginResponse.class)
         .flatMap(response -> {
